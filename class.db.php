@@ -21,11 +21,20 @@ Additional Notes:
 
 */
 
+// Set server default time, it's a life saver. seriously
+date_default_timezone_set('UTC');
 
-define('DB_SERVER','localhost');
-define('DB_NAME','stockbet_db');
-define('DB_USER','root');
-define('DB_PASS','localhost');
+if ($_SERVER['REMOTE_ADDR'] == '127.0.0.1') {
+	define('DB_SERVER','localhost');
+	define('DB_NAME','db');
+	define('DB_USER','root');
+	define('DB_PASS','localhost');
+} else {
+	define('DB_SERVER','localhost');
+	define('DB_NAME','');
+	define('DB_USER','');
+	define('DB_PASS','');
+}
 
 /**
  * Database
@@ -115,7 +124,7 @@ class Database
     {
         $return = mysql_query($query, $this->connection);
 
-        if (mysql_error() && DEBUG) {
+        if (mysql_error()) {
             echo $query."<br>";
             echo "<b>".mysql_error()."</b><br>";
         }
@@ -183,9 +192,10 @@ class Database
      * @return object $object MySQL Object
      * @aceess    puiblic
      */
-    function query($query, $value_array = null)
+    function query($query, $value_array = NULL)
     {
-        if ($value_array && is_array($value_array)) {
+		if ($value_array && is_array($value_array)) {
+			$value_array = $this->cleanArray($value_array);
             $query = preg_replace("/{{([\w]+)}}/e", "\$value_array['\\1']", $query);
             /*foreach ($value_array as $key => $value) {
                 $query = preg_replace("/{{".$key."}}/i", $value, $query);
@@ -193,6 +203,7 @@ class Database
         } else {
             //$q = $this->cleanQuery($q);
         }
+		
         $check = (substr($query, 0, 6) == 'SELECT')?true:false;
         $result = $this->_run($query);
         $result = ($check)?$this->resultCheck($result):$result;
