@@ -24,7 +24,7 @@ Additional Notes:
 // Set server default time, it's a life saver. seriously
 date_default_timezone_set('UTC');
 
-if ($_SERVER['REMOTE_ADDR'] == '127.0.0.1') {
+if ($_SERVER['REMOTE_ADDR'] == '127.0.0.1' || $_SERVER['HTTP_HOST'] == 'localhost:8888') {
 	define('DB_SERVER','localhost');
 	define('DB_NAME','db');
 	define('DB_USER','root');
@@ -49,9 +49,9 @@ if ($_SERVER['REMOTE_ADDR'] == '127.0.0.1') {
  * @link      http://willFarrell.ca
  */
 
-class Database
+class MySQL
 {
-    var $connection; //The MySQL database connection
+    var $connection_mysql; //The MySQL database connection
 
     /**
      * Constructor
@@ -77,10 +77,10 @@ class Database
      */
     private function _connect()
     {
-        $this->connection = mysql_connect(DB_SERVER, DB_USER, DB_PASS) or die(mysql_error());
-        mysql_select_db(DB_NAME, $this->connection) or die(mysql_error());
+        $this->connection_mysql = mysql_connect(DB_SERVER, DB_USER, DB_PASS) or die(mysql_error());
+        mysql_select_db(DB_NAME, $this->connection_mysql) or die(mysql_error());
     }
-    
+
     /**
      * close db connection
      *
@@ -89,7 +89,7 @@ class Database
      */
     private function _close()
     {
-         mysql_close($this->connection);
+         mysql_close($this->connection_mysql);
     }
 
     /**
@@ -102,7 +102,7 @@ class Database
      */
     function ping()
     {
-        if (!mysql_ping($this->connection)) {
+        if (!mysql_ping($this->connection_mysql)) {
             $this->_connect();
             $this->ping();
         } else {
@@ -122,7 +122,7 @@ class Database
      */
     private function _run($query)
     {
-        $return = mysql_query($query, $this->connection);
+        $return = mysql_query($query, $this->connection_mysql);
 
         if (mysql_error()) {
             echo $query."<br>";
@@ -166,6 +166,26 @@ class Database
     }
 
     /**
+     * cleans a value of SQL injections
+     *
+
+     * @param string $value value to interact with the DB
+     *
+     * @return cleaned value
+     * @aceess puiblic
+     */
+    function cleanValue($value)
+    {
+	    if (is_string($value)) {
+		    $value = trim($value);
+	        $value = stripslashes($value);
+	        $value = mysql_real_escape_string($value);
+	    }
+
+	    return $value;
+    }
+
+    /**
      * FUTURE: cleans all values of SQL injections
      *
      * @param string $query - MySQL query
@@ -203,7 +223,7 @@ class Database
         } else {
             //$q = $this->cleanQuery($q);
         }
-		
+
         $check = (substr($query, 0, 6) == 'SELECT')?true:false;
         $result = $this->_run($query);
         $result = ($check)?$this->resultCheck($result):$result;
@@ -372,6 +392,6 @@ class Database
 
 };
 
-$database = new Database;
+$database = new MySQL;
 
 ?>

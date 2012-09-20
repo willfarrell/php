@@ -4,10 +4,11 @@ Session Variables:
 
 **/
 
-//require_once 'fct/Predis/Autoloader.php'; // https://github.com/nrk/predis
-//Predis\Autoloader::register();
+//cooking variables
+if (!defined("COOKIE_EXPIRE")) define("COOKIE_EXPIRE", 60*60*2*1); //expire in 2 hour (in sec)
+if (!defined("COOKIE_PATH")) define("COOKIE_PATH", "/");  // Avaible in whole domain
 
-
+// PHPSESSION
 if (isset($_COOKIE['PHPSESSID'])) {
 	session_id($_COOKIE['PHPSESSID']);
 }
@@ -15,15 +16,17 @@ if (isset($_COOKIE['PHPSESSID'])) {
 else if (isset($_REQUEST["PHPSESSID"])) {
 	session_id($_REQUEST["PHPSESSID"]);
 }
+
+
 session_start();
 require_once "class.db.php";
+require_once "class.redis.php";
 
-class Session
-{
+class Session {
 	private $db;
-	private $salt = "001ff7dc5e819102b607da4f6f340640";
+	private $redis;
 	
-	public	$id;
+	public $id;
 	public $domain = "";
 	public $cookie = array();
 	 
@@ -31,6 +34,7 @@ class Session
 	function __construct(){
 		global $database;  //The database connection
 		$this->db = $database;
+		$this->redis = new Redis('session:');
 		
 		$this->domain = ($_SERVER['HTTP_HOST'] != 'localhost') ? $_SERVER['HTTP_HOST'] : false;
 		ini_set('session.cookie_domain',$this->domain);
@@ -40,21 +44,14 @@ class Session
 		
 		//if(!isset($_SERVER['HTTPS'])) putenv('HTTPS=off');
 		
-		$this->redis = new Predis\Client(
-			array(
-				'host' => '127.0.0.1',
-				'port' => 6379
-			),
-			array('prefix' => 'session:')
-		);
+		
 		
 		$data = $this->redis->get($this->id);
 		
 		if (!$data) {
 			$this->create();	
 		} else {
-			$json = json_decode($data);
-			foreach ($json as $key => $value) {
+			foreach ($data as $key => $value) {
 				$this->cookie[$key] = $value;
 			}
 		}
@@ -70,14 +67,15 @@ class Session
   	}
 	
 	function create() {
-		$this->cookie["USER_ID"] = 0;
-		//$this->cookie[""] = 0;
+		$this->cookie["user_ID"] = 0;
+		$this->cookie["company_ID"] = 0;
+		$this->cookie["user_level"] = 0;
 		
 		$this->save();
 	}
 	
 	function save() {
-		$this->redis->set($this->id, json_encode($this->cookie));	
+		$this->redis->set($this->id, $this->cookie);	
 	}
 	
 	function load() {
@@ -94,35 +92,41 @@ class Session
 	// reset session_ID for security
 	function login($user, $pass) {
 		
-		$query = "SELECT * FROM users WHERE ( user_name = '{{user_name}}' OR user_email = '{{user_email}}' ) AND user_password = '{{user_password}}'";
-		$result = $this->db->query($query, array('user_name' => $user, 'user_email' => $user, 'user_password' => $this->generateHash($pass)));
+		$query = "SELECT * FROM users WHERE user_email = '{{user_email}}' LIMIT 0,1";
+		$result = $this->db->query($query, array('user_email' => $user));
 		if (!$result) return false;	// user / pass combo not found
 		
 		$r = mysql_fetch_assoc($result);
 		
+		if (!bcrypt_check($pass, $r['password'])) {
+			return false;	// pass doesn't match
+		}
+		
 		// load usesr data
-		$this->cookie["USER_ID"] = $r['user_ID'];
-		$this->cookie["USER_NAME"] = $r['user_name'];
+		$return = array();
+		$return["user_ID"] 				= $this->cookie["user_ID"] 		= $r['user_ID'];
+		$return["company_ID"] 			= $this->cookie["company_ID"] 	= $r['company_ID'];
+		$return["user_name"] 			= $r['user_name'];
+		$return["password_timestamp"] 	= $r['password_timestamp'];
+		
+		$this->cookie["user_level"] 	= $r['user_level'];
 		
 		$this->load();
 		$this->save();
-		return true;
+		return $return;
 	}
 	
 	function logout() {
 		$this->clear();
 		
-		//set_cookie_fix_domain('PHPSESSID', session_id(), time()-COOKIE_EXPIRE, COOKIE_PATH, $this->domain);
+		set_cookie_fix_domain('PHPSESSID', session_id(), $_SERVER['REQUEST_TIME']-COOKIE_EXPIRE, COOKIE_PATH, $this->domain);
 	}
 	
-	function generateHash($plainText) {
-		return sha1($this->salt . $plainText);
-	}
 
 	
 };
 
-
 $session = new Session;
+
 
 ?>

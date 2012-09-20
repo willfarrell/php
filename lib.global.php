@@ -3,13 +3,48 @@
 /** GLOBAL **/
 //include('htmLawed.php');
 
-function br2nl($text)
+// hashing
+function bcrypt_hash($password, $work_factor = 8)
 {
+    if (version_compare(PHP_VERSION, '5.3') < 0) throw new Exception('Bcrypt requires PHP 5.3 or above');
+
+    if (! function_exists('openssl_random_pseudo_bytes')) {
+        throw new Exception('Bcrypt requires openssl PHP extension');
+    }
+
+    if ($work_factor < 4 || $work_factor > 31) $work_factor = 8;
+    $salt = 
+        '$2a$' . str_pad($work_factor, 2, '0', STR_PAD_LEFT) . '$' .
+        substr(
+            strtr(base64_encode(openssl_random_pseudo_bytes(16)), '+', '.'), 
+            0, 22
+        )
+    ;
+	//echo "$password, $salt \n";
+    return crypt($password, $salt);
+}
+
+function bcrypt_check($password, $stored_hash, $legacy_handler = NULL)
+{
+    if (version_compare(PHP_VERSION, '5.3') < 0) throw new Exception('Bcrypt requires PHP 5.3 or above');
+
+    if (bcrypt_is_legacy_hash($stored_hash)) {
+        if ($legacy_handler) return call_user_func($legacy_handler, $password, $stored_hash);
+        else throw new Exception('Unsupported hash format');
+    }
+
+    return crypt($password, $stored_hash) == $stored_hash;
+}
+
+function bcrypt_is_legacy_hash($hash) { return substr($hash, 0, 4) != '$2a$'; }
+
+// other
+
+function br2nl($text) {
     return  preg_replace('/<br\\s*?\/??>/i', '', $text);
 }
 
-function set_cookie_fix_domain($Name, $Value = '', $Expires = 0, $Path = '', $Domain = '', $Secure = false, $HTTPOnly = false)
-{
+function set_cookie_fix_domain($Name, $Value = '', $Expires = 0, $Path = '', $Domain = '', $Secure = false, $HTTPOnly = false) {
     if (!empty($Domain)) {
         // Fix the domain to accept domains with and without 'www.'.
         if (strtolower(substr($Domain, 0, 4)) == 'www.')  $Domain = substr($Domain, 4);
@@ -28,15 +63,13 @@ function set_cookie_fix_domain($Name, $Value = '', $Expires = 0, $Path = '', $Do
                                                 . (!$HTTPOnly ? '' : '; HttpOnly'), false);
 }
 
-function preg_replace_all($pattern,$replace,$text)
-{
+function preg_replace_all($pattern,$replace,$text) {
     while(preg_match($pattern,$text))
         $text = preg_replace($pattern,$replace,$text);
     return $text;
 }
 
-function getURL($uri = false)
-{
+function getURL($uri = false) {
     $pageURL = 'http';
     if (isset($_SERVER["HTTPS"]) && $_SERVER["HTTPS"] == "on") $pageURL .= "s";
     $pageURL .= "://";
@@ -50,11 +83,10 @@ function getURL($uri = false)
     return $pageURL;
 }
 
-function redirectToHTTPS($on = true)
-{
-  	if ($_SERVER['HTTPS']!=="on" && $on) {
+function redirectToHTTPS($on = true) {
+  	if (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS']!=="on" && $on) {
      	$redirect= "https://".$_SERVER['HTTP_HOST'].$_SERVER['REQUEST_URI'];
-  	} else if ($_SERVER['HTTPS']=="on" && !$on) {
+  	} else if (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS']=="on" && !$on) {
         $redirect= "http://".$_SERVER['HTTP_HOST'].$_SERVER['REQUEST_URI'];
     } else {
 		return;
@@ -62,8 +94,7 @@ function redirectToHTTPS($on = true)
 	header("Location:$redirect");
 }
 
-function url_exists($url)
-{
+function url_exists($url) {
     // Version 4.x supported
     $handle   = curl_init($url);
     if (false === $handle) {
@@ -147,7 +178,90 @@ function get_called_class($bt = false, $l = 1)
 }
 
 
+/** 
+ * Convert an xml file or string to an associative array (including the tag attributes): 
+ * $domObj = new xmlToArrayParser($xml); 
+ * $elemVal = $domObj->array['element'] 
+ * Or:  $domArr=$domObj->array;  $elemVal = $domArr['element']. 
+ * 
+ * @version  2.0 
+ * @param Str $xml file/string. 
+ */ 
+class xmlToArrayParser { 
+  /** The array created by the parser can be assigned to any variable: $anyVarArr = $domObj->array.*/ 
+  public  $array = array(); 
+  public  $parse_error = false; 
+  private $parser; 
+  private $pointer; 
+  
+  /** Constructor: $domObj = new xmlToArrayParser($xml); */ 
+  public function __construct($xml) { 
+    $this->pointer =& $this->array; 
+    $this->parser = xml_parser_create("UTF-8"); 
+    xml_set_object($this->parser, $this); 
+    xml_parser_set_option($this->parser, XML_OPTION_CASE_FOLDING, false); 
+    xml_set_element_handler($this->parser, "tag_open", "tag_close"); 
+    xml_set_character_data_handler($this->parser, "cdata"); 
+    $this->parse_error = xml_parse($this->parser, ltrim($xml))? false : true; 
+  } 
+  
+  /** Free the parser. */ 
+  public function __destruct() { xml_parser_free($this->parser);} 
 
+  /** Get the xml error if an an error in the xml file occured during parsing. */ 
+  public function get_xml_error() { 
+    if($this->parse_error) { 
+      $errCode = xml_get_error_code ($this->parser); 
+      $thisError =  "Error Code [". $errCode ."] \"<strong style='color:red;'>" . xml_error_string($errCode)."</strong>\", 
+                            at char ".xml_get_current_column_number($this->parser) . " 
+                            on line ".xml_get_current_line_number($this->parser).""; 
+    }else $thisError = $this->parse_error; 
+    return $thisError; 
+  } 
+  
+  private function tag_open($parser, $tag, $attributes) { 
+    $this->convert_to_array($tag, 'attrib'); 
+    $idx=$this->convert_to_array($tag, 'cdata'); 
+    if(isset($idx)) { 
+      $this->pointer[$tag][$idx] = Array('@idx' => $idx,'@parent' => &$this->pointer); 
+      $this->pointer =& $this->pointer[$tag][$idx]; 
+    }else { 
+      $this->pointer[$tag] = Array('@parent' => &$this->pointer); 
+      $this->pointer =& $this->pointer[$tag]; 
+    } 
+    if (!empty($attributes)) { $this->pointer['attrib'] = $attributes; } 
+  } 
+
+  /** Adds the current elements content to the current pointer[cdata] array. */ 
+  private function cdata($parser, $cdata) { $this->pointer['cdata'] = trim($cdata); } 
+
+  private function tag_close($parser, $tag) { 
+    $current = & $this->pointer; 
+    if(isset($this->pointer['@idx'])) {unset($current['@idx']);} 
+    
+    $this->pointer = & $this->pointer['@parent']; 
+    unset($current['@parent']); 
+    
+    if(isset($current['cdata']) && count($current) == 1) { $current = $current['cdata'];} 
+    else if(empty($current['cdata'])) {unset($current['cdata']);} 
+  } 
+  
+  /** Converts a single element item into array(element[0]) if a second element of the same name is encountered. */ 
+  private function convert_to_array($tag, $item) { 
+    if(isset($this->pointer[$tag][$item])) { 
+      $content = $this->pointer[$tag]; 
+      $this->pointer[$tag] = array((0) => $content); 
+      $idx = 1; 
+    }else if (isset($this->pointer[$tag])) { 
+      $idx = count($this->pointer[$tag]); 
+      if(!isset($this->pointer[$tag][0])) { 
+        foreach ($this->pointer[$tag] as $key => $value) { 
+            unset($this->pointer[$tag][$key]); 
+            $this->pointer[$tag][0][$key] = $value; 
+    }}}else $idx = null; 
+    return $idx; 
+  } 
+} 
 
 
 
