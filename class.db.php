@@ -77,10 +77,8 @@ class MySQL
      */
     private function _connect()
     {
-        $this->connection_mysql = mysql_connect(DB_SERVER, DB_USER, DB_PASS) or die(mysql_error());
-        mysql_select_db(DB_NAME, $this->connection_mysql) or die(mysql_error());
+        $this->connection_mysql = mysqli_connect(DB_SERVER, DB_USER, DB_PASS, DB_NAME) or die(mysql_error());
     }
-
     /**
      * close db connection
      *
@@ -89,7 +87,7 @@ class MySQL
      */
     private function _close()
     {
-         mysql_close($this->connection_mysql);
+         mysqli_close($this->connection_mysql);
     }
 
     /**
@@ -122,11 +120,11 @@ class MySQL
      */
     private function _run($query)
     {
-        $return = mysql_query($query, $this->connection_mysql);
+        $return = mysqli_query($query, $this->connection_mysql);
 
         if (mysql_error()) {
             echo $query."<br>";
-            echo "<b>".mysql_error()."</b><br>";
+            echo "<b>".mysqli_error()."</b><br>";
         }
         return $return;
     }
@@ -141,7 +139,7 @@ class MySQL
      */
     function resultCheck($result)
     {
-        if (!$result || (mysql_num_rows($result) < 1)) {
+        if (!$result || (mysqli_num_rows($result) < 1)) {
             return null;
         }
         return $result;
