@@ -20,7 +20,7 @@ Additional Notes:
 - Make sure the DB_USER only has permission for command your using
 
 */
-
+ 
 // Set server default time, it's a life saver. seriously
 date_default_timezone_set('UTC');
 
@@ -100,7 +100,7 @@ class MySQL
      */
     function ping()
     {
-        if (!mysql_ping($this->connection_mysql)) {
+        if (!mysqli_ping($this->connection_mysql)) {
             $this->_connect();
             $this->ping();
         } else {
@@ -122,9 +122,9 @@ class MySQL
     {
         $return = mysqli_query($query, $this->connection_mysql);
 
-        if (mysql_error()) {
+        if (mysqli_error($this->connection_mysql)) {
             echo $query."<br>";
-            echo "<b>".mysqli_error()."</b><br>";
+            echo "<b>".mysqli_error($this->connection_mysql)."</b><br>";
         }
         return $return;
     }
@@ -177,7 +177,7 @@ class MySQL
 	    if (is_string($value)) {
 		    $value = trim($value);
 	        $value = stripslashes($value);
-	        $value = mysql_real_escape_string($value);
+                $value = mysqli_real_escape_string($value);
 	    }
 
 	    return $value;
@@ -317,7 +317,8 @@ class MySQL
 
         $query = "INSERT INTO `$table` $set $update";
         $this->_run($query);
-        return mysql_insert_id();
+        
+        return mysqli_insert_id($this->connection_mysql);
     }
 
     /**
@@ -358,7 +359,8 @@ class MySQL
 
         $query = "UPDATE `$table` $set $where";
         $this->_run($query);
-        return mysql_affected_rows();
+        
+        return mysqli_affected_rows($this->connection_mysql);
     }
 
     /**
@@ -385,11 +387,9 @@ class MySQL
         }
         $query = "DELETE FROM `$table` $where";
         $this->_run($query);
-        return mysql_affected_rows();
+        return mysqli_affected_rows($this->connection_mysql);
     }
 
 };
 
 $database = new MySQL;
-
-?>
